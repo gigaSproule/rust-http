@@ -1,8 +1,7 @@
-FROM liuchong/rustup as builder
+FROM liuchong/rustup:nightly as builder
 RUN USER=root cargo new --bin rust-http
 WORKDIR ./rust-http
 COPY ./Cargo.toml ./Cargo.toml
-RUN rustup default nightly
 RUN cargo build --release
 RUN rm src/*.rs
 
