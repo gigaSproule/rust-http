@@ -1,0 +1,9 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'cargo'
+    args: ['build', '--tag=gcr.io/$PROJECT_ID/rust-http', '.']
+
+timeout: 2400s
+
+images: ['gcr.io/$PROJECT_ID/rust-http']
+tags: ['rust-http']
