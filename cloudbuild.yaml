@@ -1,0 +1,19 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [ 'build', '-t', 'gcr.io/$PROJECT_ID/rust-http', '.' ]
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [ 'push', 'gcr.io/$PROJECT_ID/rust-http' ]
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'rust-http'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/rust-http'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+images:
+  - 'gcr.io/$PROJECT_ID/rust-http'
