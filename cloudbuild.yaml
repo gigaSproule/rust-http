@@ -11,6 +11,8 @@ steps:
       - 'rust-http'
       - '--image'
       - 'gcr.io/$PROJECT_ID/rust-http'
+      - '--port'
+      - '8000'
       - '--region'
       - 'us-central1'
       - '--platform'
