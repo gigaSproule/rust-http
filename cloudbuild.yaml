@@ -17,5 +17,9 @@ steps:
       - 'us-central1'
       - '--platform'
       - 'managed'
+      - '--cpu'
+      - '1'
+      - '--memory'
+      - '128Mi'
 images:
   - 'gcr.io/$PROJECT_ID/rust-http'
