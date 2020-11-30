@@ -14,7 +14,7 @@ steps:
       - '--port'
       - '8000'
       - '--region'
-      - 'us-central1'
+      - 'us-east1'
       - '--platform'
       - 'managed'
       - '--cpu'
