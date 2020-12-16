@@ -3,31 +3,18 @@
 #[macro_use]
 extern crate rocket;
 
-use std::collections::HashMap;
 use std::sync::Mutex;
 
-use rocket::http::RawStr;
-use rocket::State;
+use rocket::{response, Response, Rocket, State};
+use rocket::http::{RawStr, Status};
+use rocket::http::ContentType;
+use rocket::http::hyper::Error;
+use rocket::response::content::{Plain, Json};
 use rusqlite::{Connection, NO_PARAMS, params, Result};
 
-struct Counter {
-    name_count: HashMap<String, i32>
-}
-
-impl Counter {
-    fn new() -> Counter {
-        Counter { name_count: HashMap::new() }
-    }
-
-    fn increment(&mut self, name: &str) -> i32 {
-        let i = self.name_count.get(name).get_or_insert(&0).clone() + 1;
-        self.name_count.insert(name.to_string(), i);
-        i
-    }
-
-    fn get(&self, name: &str) -> &i32 {
-        self.name_count.get(name).unwrap_or(&0)
-    }
+struct Visitor {
+    name: String,
+    count: i32,
 }
 
 #[get("/")]
@@ -35,22 +22,17 @@ fn index() -> &'static str {
     "Hello, world!"
 }
 
-struct Visitor {
-    name: String,
-    count: i32,
-}
-
 #[get("/<name>")]
-fn hello(counter: State<Mutex<Counter>>, connection: State<Mutex<Connection>>, name: &RawStr) -> String {
+fn hello(connection: State<Mutex<Connection>>, name: &RawStr) -> std::result::Result<Json<String>, Error> {
     let name_str = name.as_str();
     let lock_result = connection.inner().lock();
     if lock_result.is_err() {
-        return format!("Error occurred {}", lock_result.unwrap_err());
+        return internal_server_error(format!("Error occurred {}", lock_result.unwrap_err()));
     }
     let conn = lock_result.unwrap();
     let statement_result = conn.prepare("SELECT name, count FROM visitors WHERE name = ?1");
     if statement_result.is_err() {
-        return format!("Error occurred {}", statement_result.unwrap_err());
+        return internal_server_error(format!("Error occurred {}", statement_result.unwrap_err()));
     }
     let mut statement = statement_result.unwrap();
     let rows = statement.query_map(params![name_str], |row| {
@@ -60,29 +42,89 @@ fn hello(counter: State<Mutex<Counter>>, connection: State<Mutex<Connection>>, n
         })
     });
     if rows.is_err() {
-        return format!("Error occurred {}", rows.err().unwrap());
+        return internal_server_error(format!("Error occurred {}", rows.err().unwrap()));
     }
     let previous = rows.unwrap().next();
-    let count = counter.inner().lock().unwrap().increment(name_str);
-    if previous.is_none() {
-        let insert_result = conn.execute("INSERT INTO visitors (name, count) VALUES (?1, ?2)", params![name_str, count]);
-        if insert_result.is_err() {
-            return format!("Error occurred {}", insert_result.err().unwrap());
+    let mut count = 1;
+    if previous.is_some() {
+        let previous_result = previous.as_ref().unwrap();
+        if previous_result.is_err() {
+            return internal_server_error(format!("Error occurred {}", previous_result.as_ref().err().unwrap()));
+        }
+        count = previous_result.as_ref().unwrap().count + 1;
+        let update_result = conn.execute("UPDATE visitors SET count = count + 1 WHERE name = ?1", params![name_str]);
+        if update_result.is_err() {
+            return internal_server_error(format!("Error occurred {}", update_result.err().unwrap()));
         }
     } else {
-        let update_result = conn.execute("UPDATE visitors SET count = ?1 WHERE name = ?2", params![count, name_str]);
-        if update_result.is_err() {
-            return format!("Error occurred {}", update_result.err().unwrap());
+        let insert_result = conn.execute("INSERT INTO visitors (name, count) VALUES (?1, ?2)", params![name_str, count]);
+        if insert_result.is_err() {
+            return internal_server_error(format!("Error occurred {}", insert_result.err().unwrap()));
         }
     }
-    format!("Hello, {}. Previous visits were {}, now it's {} times!", name_str, previous.unwrap_or(Ok(Visitor { name: "".to_string(), count: 0 })).unwrap().count, count)
+    ok(format!("Hello, {}. Previous visits were {}, now it's {} times!", name_str, previous.unwrap_or(Ok(Visitor { name: "".to_string(), count: 0 })).unwrap().count, count))
+}
+
+fn internal_server_error<'a>(message: String) -> std::result::Result<Response<'a>, Error> {
+    response::Response::build()
+        .header(ContentType::Plain)
+        .sized_body(Json(message))
+        .status(Status::InternalServerError)
+        .ok()
+}
+
+fn ok<'a>(message: String) -> std::result::Result<Response<'a>, Error> {
+    response::Response::build()
+        .header(ContentType::Plain)
+        .sized_body(Plain(message))
+        .status(Status::Ok)
+        .ok()
 }
 
 fn main() -> Result<()> {
     let connection = Connection::open_in_memory()?;
     connection.execute("CREATE TABLE IF NOT EXISTS visitors (id INTEGER AUTO INCREMENT PRIMARY KEY, name TEXT NOT NULL, count INTEGER)", NO_PARAMS)?;
     let safe_connection = Mutex::new(connection);
-    let counter = Mutex::new(Counter::new());
-    rocket::ignite().manage(counter).manage(safe_connection).mount("/", routes![index, hello]).launch();
+    rocket(safe_connection).launch();
     Ok(())
+}
+
+fn rocket(safe_connection: Mutex<Connection>) -> Rocket {
+    rocket::ignite().manage(safe_connection).mount("/", routes![index, hello])
+}
+
+#[cfg(test)]
+mod tests {
+    use Connection;
+    use rocket::http::Status;
+    use rocket::local::Client;
+
+    use super::*;
+
+    #[test]
+    fn index_returns_hello_world() {
+        let client = Client::new(rocket(Mutex::new(Connection::open_in_memory().unwrap()))).expect("valid rocket instance");
+        let mut response = client.get("/").dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.body_string(), Some("Hello, world!".into()));
+    }
+
+    #[test]
+    fn hello_returns_error_when_visitors_table_not_there() {
+        let connection = Connection::open_in_memory().unwrap();
+        let client = Client::new(rocket(Mutex::new(connection))).expect("valid rocket instance");
+        let mut response = client.get("/name").dispatch();
+        assert_eq!(response.status(), Status::InternalServerError);
+        assert_eq!(response.body_string(), Some("Hello, name. Previous visits were 0, now it's 1 times!".into()));
+    }
+
+    #[test]
+    fn hello_returns_param_with_counter() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute("CREATE TABLE IF NOT EXISTS visitors (id INTEGER AUTO INCREMENT PRIMARY KEY, name TEXT NOT NULL, count INTEGER)", NO_PARAMS);
+        let client = Client::new(rocket(Mutex::new(connection))).expect("valid rocket instance");
+        let mut response = client.get("/name").dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.body_string(), Some("Hello, name. Previous visits were 0, now it's 1 times!".into()));
+    }
 }
