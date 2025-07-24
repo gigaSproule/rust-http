@@ -12,7 +12,7 @@ RUN cargo build --release
 RUN pwd
 
 
-FROM debian:bookworm-slim
+FROM debian:12.11-slim
 ARG APP=/usr/src/app
 
 RUN apt-get update \
