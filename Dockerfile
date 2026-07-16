@@ -1,4 +1,4 @@
-FROM liuchong/rustup:nightly as builder
+FROM liuchong/rustup:nightly@sha256:fd793d6f4f1bfc58c75f8e5e60356521d4d8e7617ebfa9a9c88869ccb272d60f as builder
 RUN USER=root cargo new --bin rust-http
 WORKDIR ./rust-http
 COPY ./Cargo.toml ./Cargo.toml
@@ -12,7 +12,7 @@ RUN cargo build --release
 RUN pwd
 
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
 ARG APP=/usr/src/app
 
 RUN apt-get update \
