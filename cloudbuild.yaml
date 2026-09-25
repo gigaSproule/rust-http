@@ -1,7 +1,7 @@
 steps:
-  - name: 'gcr.io/cloud-builders/docker@sha256:001fb4a870a84485cf198c80002f7af42f6456f2dbc261d70a0b5f0111470df4'
+  - name: 'gcr.io/cloud-builders/docker@sha256:bbb3d633c5c2813b2ce5245852979e1d637768f4acfc504d8ece288f91e9b60f'
     args: [ 'build', '-t', 'gcr.io/$PROJECT_ID/rust-http', '.' ]
-  - name: 'gcr.io/cloud-builders/docker@sha256:001fb4a870a84485cf198c80002f7af42f6456f2dbc261d70a0b5f0111470df4'
+  - name: 'gcr.io/cloud-builders/docker@sha256:bbb3d633c5c2813b2ce5245852979e1d637768f4acfc504d8ece288f91e9b60f'
     args: [ 'push', 'gcr.io/$PROJECT_ID/rust-http' ]
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:f91af03cbea86d4bd549ea070d3847478da0faac5bdb7b7675ab8b3cd50b19da'
     entrypoint: gcloud
